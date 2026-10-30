@@ -1,0 +1,21 @@
+[package]
+name = "better_hotkeys"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.8"
+rdev = { version = "0.5.3", features = ["unstable_grab"] }
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+    "Win32_Security"
+] }
+winsafe = { version = "0.0.29", features = ["user"] }
+winvd = "0.0.49"
+single-instance = "0.3.3"

@@ -1,0 +1,21 @@
+[window_features.set_window_fullscreen]
+active = true
+key_bindings = ["WinLeft", "KeyF"]
+
+[window_features.quick_close_window]
+active = true
+key_bindings = ["WinLeft", "KeyQ"]
+
+[window_features.slide_to_desktop]
+active = true
+key_bindings = ["WinLeft"]
+
+[window_features.move_window_to_desktop]
+active = true
+key_bindings = ["ShiftLeft", "WinLeft"]
+additional_flags = ["auto_slide"]
+
+[window_features.drag_window]
+active = true
+key_bindings = ["WinLeft"]
+additional_flags = ["mouse_wheel_only"]
