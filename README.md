@@ -15,6 +15,27 @@ through a TOML file.
 The program runs in the background and listens for global key presses, so the
 hotkeys work even when the program window is not active.
 
+## How to install
+
+Install the executable from the project folder with Cargo:
+
+```powershell
+cargo install --path .
+```
+
+Cargo installs `better_hotkeys.exe` to:
+
+```text
+%USERPROFILE%\.cargo\bin\better_hotkeys.exe
+```
+
+If `%USERPROFILE%\.cargo\bin` is in your `PATH`, you can initialize the default
+configuration and register the program to start with Windows:
+
+```powershell
+better_hotkeys.exe --init
+```
+
 ## Building
 
 You need to install [Rust](https://www.rust-lang.org/tools/install) first.

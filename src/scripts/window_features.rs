@@ -1,7 +1,8 @@
-﻿use crate::{
+use crate::_try::*;
+use crate::{
     config::{ActiveWindowFeature, FeatureAction},
     global_variables,
-    keys::{build_hotkeys, Hotkey},
+    keys::{Hotkey, build_hotkeys},
     window::{Window, WindowDrag},
 };
 use rdev::{Button, Event, EventType, Key, grab, simulate};
@@ -11,8 +12,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
-use crate::_try::*;
-
 
 pub fn set_window_fullscreen() {
     if let Err(err) = _try_set_window_fullscreen() {
@@ -44,7 +43,6 @@ pub fn slide_to_desktop(number: u32) {
     _try_slide_to_desktop(number).unwrap_or_else(|err| eprintln!("Window error: {}", err));
 }
 
-
 pub fn begin(features: Vec<ActiveWindowFeature>) {
     let drag_feature = features
         .iter()
@@ -56,8 +54,13 @@ pub fn begin(features: Vec<ActiveWindowFeature>) {
     let wheel_only = drag_feature
         .and_then(|feature| feature.config.additional_flags.as_ref())
         .is_some_and(|flags| flags.iter().any(|flag| flag == "mouse_wheel_only"));
-    let drag_button = if wheel_only { Button::Middle } else { Button::Left };
+    let drag_button = if wheel_only {
+        Button::Middle
+    } else {
+        Button::Left
+    };
     let drag = RefCell::new(None::<DragHandle>);
+    let middle_drag_window = RefCell::new(None::<PendingMiddleClick>);
     let bindings = RefCell::new(
         features
             .iter()
@@ -70,23 +73,68 @@ pub fn begin(features: Vec<ActiveWindowFeature>) {
     thread::spawn(move || {
         let result = grab(move |event: Event| {
             match event.event_type {
+                EventType::ButtonPress(button) if button == Button::Middle && wheel_only => {
+                    match winsafe::GetCursorPos() {
+                        Ok(cursor) => match Window::under_cursor() {
+                            Ok(window) => {
+                                *middle_drag_window.borrow_mut() = Some(PendingMiddleClick {
+                                    window,
+                                    cursor_x: cursor.x,
+                                    cursor_y: cursor.y,
+                                });
+                            }
+                            Err(error) => eprintln!("Window selection error: {error}"),
+                        },
+                        Err(error) => eprintln!("Cursor position error: {error}"),
+                    }
+                    return Some(event);
+                }
+
                 EventType::ButtonPress(button)
                     if button == drag_button
-                        && (wheel_only
-                            || (!drag_modifiers.is_empty()
-                                && drag_modifiers.is_subset(&pressed.borrow()))) =>
+                        && !wheel_only
+                        && (!drag_modifiers.is_empty()
+                            && drag_modifiers.is_subset(&pressed.borrow())) =>
                 {
                     match Window::under_cursor().and_then(|window| window.start_drag()) {
                         Ok(Some(started)) => {
                             *drag.borrow_mut() = Some(spawn_drag(started));
-                            if !wheel_only {
-                                suppress_start_menu();
-                            }
+                            suppress_start_menu();
                             return None;
                         }
                         Ok(None) => {}
                         Err(error) => eprintln!("Window drag error: {error}"),
                     }
+                }
+
+                EventType::MouseMove { x, y } if wheel_only => {
+                    let should_start_drag =
+                        middle_drag_window.borrow().as_ref().is_some_and(|pending| {
+                            (x - f64::from(pending.cursor_x)).abs() >= DRAG_THRESHOLD
+                                || (y - f64::from(pending.cursor_y)).abs() >= DRAG_THRESHOLD
+                        });
+
+                    if should_start_drag {
+                        let pending = middle_drag_window.borrow_mut().take();
+                        if let Some(pending) = pending {
+                            match pending.window.start_drag() {
+                                Ok(Some(started)) => {
+                                    *drag.borrow_mut() = Some(spawn_drag(started));
+                                }
+                                Ok(None) => {}
+                                Err(error) => eprintln!("Window drag error: {error}"),
+                            }
+                            return None;
+                        }
+                    }
+                }
+
+                EventType::ButtonRelease(Button::Middle) if wheel_only => {
+                    if drag.borrow().is_some() {
+                        *drag.borrow_mut() = None;
+                    }
+                    middle_drag_window.borrow_mut().take();
+                    return Some(event);
                 }
 
                 EventType::ButtonRelease(button)
@@ -125,10 +173,7 @@ pub fn begin(features: Vec<ActiveWindowFeature>) {
                             hotkey.triggered = true;
 
                             #[cfg(debug_assertions)]
-                            println!(
-                                "hotkey triggered: {}",
-                                hotkey.name
-                            );
+                            println!("hotkey triggered: {}", hotkey.name);
 
                             (hotkey.callback)();
 
@@ -164,13 +209,19 @@ pub fn begin(features: Vec<ActiveWindowFeature>) {
         });
 
         if let Err(error) = result {
-            eprintln!(
-                "failed to grab global keyboard events: {error:?}"
-            );
+            eprintln!("failed to grab global keyboard events: {error:?}");
 
             global_variables::LOOP.store(false, Ordering::Release);
         }
     });
+}
+
+const DRAG_THRESHOLD: f64 = 5.0;
+
+struct PendingMiddleClick {
+    window: Window,
+    cursor_x: i32,
+    cursor_y: i32,
 }
 
 struct DragHandle(Arc<AtomicBool>);
